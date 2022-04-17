@@ -2,17 +2,40 @@
 
 # set -x
 
-umountdev=$1
+help=0
+declare -a blkdevices
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help)
+            help=1
+            shift
+            ;;
+        
+        -*)
+            help=1
+            shift
+            ;;
+        
+        *)
+            blkdevices+=( "$1" )
+            shift
+            ;;
+    esac
+done
+
+if [ "$help" == "1" ] ; then
+    echo "$0 {blockdevice} [blockdevice]..."
+    echo "Try to kill processes holding a block device and then deactivate the device."
+    echo "Nonexisting blockdevices are ignored"
+    echo
+    echo "Copyright 2022 Patrik Nilsson. MIT License."
+    exit 1
+fi
 
 if [ "$(id -u)" != "0" ]; then
     echo "This script must be run as root"
     exit 255
-fi
-
-if [ $# -eq 0 ] ; then
-    echo "$0 {blockdevice} [blockdevice]..."
-    echo "Try to kill processes holding a block device and then deactivate it"
-    echo "Copyright 2022 Patrik Nilsson. MIT License."
 fi
 
 sendkill()
@@ -24,8 +47,8 @@ sendkill()
     while IFS= read -r f ; do
         if [ "$f" != "" ] ; then
             for (( i=0 ; i<30 ; i++ )) ; do 
-                fuser -m "$f" 2>/dev/null |
-                while read -d " " g ; do
+                fuser -m "$f" 2>/dev/null | awk '{print $0}' | tr -d ' ' | grep -v -E '^$' |
+                while IFS= read -r g ; do
                     if [ "$g" != "" ] ; then
                         kill -$sig -- "-$g" || true
                     fi
@@ -42,13 +65,13 @@ sendkill()
     done
 }
 
-while [ $# -gt 0 ]; do
-    if [ -b "$1" ]; then
-        umountdev=$1
+for blkdevice in "${blkdevices[@]}" ; do
+    if [ -b "$blkdevice" ]; then
+        umountdev="$blkdevice"
     else
-        umountdev=$(losetup --raw --list NAME -n -j "$1" | awk '{print $1}')
+        umountdev=$(losetup --raw --list NAME -n -j "$blkdevice" | awk '{print $1}')
     fi
-
+    
     if [ "$umountdev" != "" ]; then
         echo -n "Sending SIGTERM to processes holding device: "
         sendkill "${umountdev}" TERM
@@ -62,8 +85,6 @@ while [ $# -gt 0 ]; do
         
         lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | xargs -r -I '{}' -- blkdeactivate -d force,retry -u -l wholevg -m disablequeueing -r wait '{}'
     fi
-    
-    shift
 done
 
 exit 0
