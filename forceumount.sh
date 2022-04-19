@@ -93,6 +93,9 @@ for blkdevice in "${blkdevices[@]}" ; do
         # swap
         lsblk -n -o MOUNTPOINT "${umountdev}" | while IFS= read -r f ; do if [ "$f" != "" ] ; then swapon --show=NAME --noheadings | grep -E "^$f" | xargs -I '{}' -- swapoff '{}' ; fi ; done
         
+        # non block devices
+        lsblk -n -o MOUNTPOINT "${umountdev}" | while IFS= read -r f ; do if [ "$f" != "" ] ; then df -a --output=source,target | awk -v mountpoint="$f" '{if(substr($2,1,length(mountpoint))==mountpoint){print $2}}' | grep -E '^/' | sort -u | awk '{printf("%04d%s\n",length($0),$0)}' | sort -r -n | awk '{print substr($0,5)}' | xargs -I '{}' -- umount '{}' ; fi ; done
+        
         # meant for loop devices
         lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | xargs -r -I '{}' -- umount '{}' 2>/dev/null
         
