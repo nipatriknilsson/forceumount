@@ -102,6 +102,8 @@ for blkdevice in "${blkdevices[@]}" ; do
         # deactivate loop devices
         lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | xargs -r -I '{}' -- losetup -d '{}' 2>/dev/null
         
+        lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | while IFS= read -r f ; do losetup -n -a -O NAME,DIO,BACK-FILE | awk -v d="$f" '{if($2=="0" && d==$3){print $1}}' | xargs -I '{}' -- losetup -d '{}' ; done
+        
         # the rest
         lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | xargs -r -I '{}' -- blkdeactivate -d force,retry -u -l wholevg -m disablequeueing -r wait '{}'
     fi
