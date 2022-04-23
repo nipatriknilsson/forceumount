@@ -76,37 +76,39 @@ sendkill()
 
 for blkdevice in "${blkdevices[@]}" ; do
     if [ -b "$blkdevice" ]; then
-        umountdev="$blkdevice"
+        umountdevice_array=( "$blkdevice" )
     else
-        umountdev=$(losetup --raw --list NAME -n -j "$blkdevice" | awk '{print $1}')
+        IFS=$'\n' read -r -d '' -a umountdevice_array <<< "$(losetup --raw --list NAME -n -j "$blkdevice" | awk '{print $1}')"
     fi
     
-    if [ "$umountdev" != "" ]; then
-        echo -n "Sending SIGTERM to processes holding device: "
-        sendkill "${umountdev}" TERM
-        echo " Done!"
-        
-        echo -n "Sending SIGKILL to processes holding device: "
-        sendkill "${umountdev}" KILL
-        echo " Done!"
-        
-        # swap
-        lsblk -n -o MOUNTPOINT "${umountdev}" | while IFS= read -r f ; do if [ "$f" != "" ] ; then swapon --show=NAME --noheadings | grep -E "^$f" | xargs -I '{}' -- swapoff '{}' ; fi ; done
-        
-        # non block devices
-        lsblk -n -o MOUNTPOINT "${umountdev}" | while IFS= read -r f ; do if [ "$f" != "" ] ; then df -a --output=source,target | awk -v mountpoint="$f" '{if(substr($2,1,length(mountpoint))==mountpoint){print $2}}' | grep -E '^/' | sort -u | awk '{printf("%04d%s\n",length($0),$0)}' | sort -r -n | awk '{print substr($0,5)}' | xargs -I '{}' -- umount '{}' ; fi ; done
-        
-        # meant for loop devices
-        lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | xargs -r -I '{}' -- umount '{}' 2>/dev/null
-        
-        # deactivate loop devices
-        lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | xargs -r -I '{}' -- losetup -d '{}' 2>/dev/null
-        
-        lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | while IFS= read -r f ; do losetup -n -a -O NAME,DIO,BACK-FILE | awk -v d="$f" '{if($2=="0" && d==$3){print $1}}' | xargs -I '{}' -- losetup -d '{}' ; done
-        
-        # the rest
-        lsblk -n -p -l "${umountdev}" | tac | awk '{print $1}' | xargs -r -I '{}' -- blkdeactivate -d force,retry -u -l wholevg -m disablequeueing -r wait '{}'
-    fi
+    for umountdevice in "${umountdevice_array[@]}" ; do
+        if [ -b "$umountdevice" ]; then
+            echo -n "Sending SIGTERM to processes holding device: "
+            sendkill "${umountdevice}" TERM
+            echo " Done!"
+            
+            echo -n "Sending SIGKILL to processes holding device: "
+            sendkill "${umountdevice}" KILL
+            echo " Done!"
+            
+            # swap
+            lsblk -n -o MOUNTPOINT "${umountdevice}" | while IFS= read -r f ; do if [ "$f" != "" ] ; then swapon --show=NAME --noheadings | grep -E "^$f" | xargs -I '{}' -- swapoff '{}' ; fi ; done
+            
+            # non block devices
+            lsblk -n -o MOUNTPOINT "${umountdevice}" | while IFS= read -r f ; do if [ "$f" != "" ] ; then df -a --output=source,target | awk -v mountpoint="$f" '{if(substr($2,1,length(mountpoint))==mountpoint){print $2}}' | grep -E '^/' | sort -u | awk '{printf("%04d%s\n",length($0),$0)}' | sort -r -n | awk '{print substr($0,5)}' | xargs -I '{}' -- umount '{}' ; fi ; done
+            
+            # meant for loop devices
+            lsblk -n -p -l "${umountdevice}" | tac | awk '{print $1}' | xargs -r -I '{}' -- umount '{}' 2>/dev/null
+            
+            # deactivate loop devices
+            lsblk -n -p -l "${umountdevice}" | tac | awk '{print $1}' | xargs -r -I '{}' -- losetup -d '{}' 2>/dev/null
+            
+            lsblk -n -p -l "${umountdevice}" | tac | awk '{print $1}' | while IFS= read -r f ; do losetup -n -a -O NAME,DIO,BACK-FILE | awk -v d="$f" '{if($2=="0" && d==$3){print $1}}' | xargs -I '{}' -- losetup -d '{}' ; done
+            
+            # the rest
+            lsblk -n -p -l "${umountdevice}" | tac | awk '{print $1}' | xargs -r -I '{}' -- blkdeactivate -d force,retry -u -l wholevg -m disablequeueing -r wait '{}'
+        fi
+    done
 done
 
 exit 0
