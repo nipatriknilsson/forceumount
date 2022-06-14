@@ -56,7 +56,7 @@ sendkill()
     while IFS= read -r f ; do
         if [ "$f" != "" ] ; then
             for (( i=0 ; i<30 ; i++ )) ; do 
-                fuser -m "$f" 2>/dev/null | awk '{print $0}' | tr ' ' '\n' | grep -v -E '^$' |
+                lsof -Fp +D "$f" 2>/dev/null | grep -E '^p' | tr -c -d '[:digit:]\n' |
                 while IFS= read -r g ; do
                     if [ "$g" != "" ] ; then
                         kill -$sig -- "-$g" || true
@@ -107,6 +107,8 @@ for blkdevice in "${blkdevices[@]}" ; do
             
             # the rest
             lsblk -n -p -l "${umountdevice}" | tac | awk '{print $1}' | xargs -r -I '{}' -- blkdeactivate -d force,retry -u -l wholevg -m disablequeueing -r wait '{}'
+            
+            echo
         fi
     done
 done
